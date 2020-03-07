@@ -3,7 +3,6 @@ ARG DEBIAN_CODE_NAME=buster
 
 FROM rust:${RUST_VERSION}-slim-${DEBIAN_CODE_NAME} AS builder
 WORKDIR /workdir
-RUN apt-get update -y && apt-get install pkg-config libssl-dev -y
 COPY ./ ./
 RUN cargo build --release --example dump
 
