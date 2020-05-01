@@ -271,7 +271,7 @@ fn parse_instance_name<S: AsRef<str>>(s: S) -> Result<String> {
 
 fn parse_zone<S: AsRef<str>>(s: S) -> Result<String> {
     s.as_ref()
-        .split('.')
+        .split('/')
         .last()
         .filter(|x| !x.is_empty())
         .map(Into::into)
