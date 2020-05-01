@@ -262,20 +262,20 @@ fn json_array<S: AsRef<str>>(s: S) -> Result<Vec<String>> {
 
 fn parse_instance_name<S: AsRef<str>>(s: S) -> Result<String> {
     s.as_ref()
-        .split(".")
+        .split('.')
         .next()
         .filter(|x| !x.is_empty())
-        .map(|x| x.into())
-        .ok_or(ErrorKind::MetadataParse("instance name").into())
+        .map(Into::into)
+        .ok_or_else(|| ErrorKind::MetadataParse("instance name").into())
 }
 
 fn parse_zone<S: AsRef<str>>(s: S) -> Result<String> {
     s.as_ref()
-        .split("/")
+        .split('.')
         .last()
         .filter(|x| !x.is_empty())
-        .map(|x| x.into())
-        .ok_or(ErrorKind::MetadataParse("zone").into())
+        .map(Into::into)
+        .ok_or_else(|| ErrorKind::MetadataParse("zone").into())
 }
 
 #[cfg(test)]
