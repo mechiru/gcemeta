@@ -1,4 +1,4 @@
-use attohttpc::{PreparedRequest, RequestBuilder, StatusCode};
+use attohttpc::{body::Empty, PreparedRequest, RequestBuilder, StatusCode};
 use lazy_static::lazy_static;
 
 use std::{
@@ -60,7 +60,7 @@ fn test_on_gce() -> bool {
         || running_on_gce() && rx.recv_timeout(Duration::from_secs(5)).unwrap_or(false)
 }
 
-fn has_meta_header(tx: Sender<bool>, mut req: PreparedRequest<[u8; 0]>) -> thread::JoinHandle<()> {
+fn has_meta_header(tx: Sender<bool>, mut req: PreparedRequest<Empty>) -> thread::JoinHandle<()> {
     thread::spawn(move || {
         let ret = req
             .send()
