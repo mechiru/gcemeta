@@ -34,7 +34,7 @@ fn httpc_get<T>(url: T) -> RequestBuilder
 where
     T: AsRef<str>,
 {
-    attohttpc::get(url).header_append("User-Agent", USER_AGENT)
+    attohttpc::get(url).header_append(attohttpc::header::USER_AGENT, USER_AGENT)
 }
 
 /// Report whether this process is running on Google Compute Engine.
