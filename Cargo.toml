@@ -1,17 +1,22 @@
 [package]
 name = "gcemeta"
-version = "0.1.2"
+version = "0.1.3"
 authors = ["mechiru <u9053u6d41@gmail.com>"]
 edition = "2018"
 license = "MIT OR Apache-2.0"
 description = "This library provides access to Google Compute Engine metadata service."
 repository = "https://github.com/mechiru/gcemeta"
 documentation = "https://docs.rs/gcemeta"
-keywords = ["gcloud", "gce", "gcemeta"]
-categories = ["config"]
+categories = ["api-bindings"]
+keywords = ["google", "cloud", "compute", "engine", "metadata"]
 readme = "README.md"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+include = [
+  "Cargo.toml",
+  "LICENSE-APACHE",
+  "LICENSE-MIT",
+  "src/**/*",
+]
 
 [dependencies]
 lazy_static = "1.4"
