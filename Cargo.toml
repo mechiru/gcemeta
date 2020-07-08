@@ -20,7 +20,7 @@ include = [
 
 [dependencies]
 lazy_static = "1.4"
-attohttpc = { version = "0.13", default-features = false, features = ["compress"] }
+attohttpc = { version = "0.15", default-features = false, features = ["compress"] }
 serde_json = "1.0"
 
 [dev-dependencies]
