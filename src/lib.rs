@@ -160,7 +160,7 @@ pub struct Client<C, B = Body> {
 impl Client<(), Body> {
     /// Create a new Client with the default config.
     #[cfg(feature = "default")]
-    pub fn new() -> Client<hyper::client::connect::HttpConnector, hyper::Body> {
+    pub fn new() -> Client<hyper::client::connect::HttpConnector, Body> {
         // https://github.com/googleapis/google-cloud-go/blob/c66290a95b8bf2298d5e7c84378cb6118cc0a348/compute/metadata/metadata.go#L64-L71
         let inner = {
             let keepalive = Duration::from_secs(30);
@@ -411,9 +411,9 @@ impl<C: Clone, B> Clone for Client<C, B> {
     fn clone(&self) -> Self {
         Self {
             inner: self.inner.clone(),
-            cache: self.cache.clone(),
             env: self.env.clone(),
             config: self.config.clone(),
+            cache: self.cache.clone(),
         }
     }
 }
