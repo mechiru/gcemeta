@@ -32,18 +32,18 @@ use std::{env, error, fmt, str::FromStr, sync::Arc, time::Duration};
 // === macros ===
 
 macro_rules! __path {
-	  ($($expr:expr)*) => {
+    ($($expr:expr)*) => {
         concat!("/computeMetadata/v1/", $($expr)*)
-	  };
+    };
     ($expr:expr, $($tt:tt)*) => {
         format!(__path!($expr), $($tt)*)
     };
 }
 
 macro_rules! path {
-	  ($($expr:expr)*) => {
-		    PathAndQuery::from_static(__path!($($expr)*))
-	  };
+    ($($expr:expr)*) => {
+        PathAndQuery::from_static(__path!($($expr)*))
+    };
     ($expr:expr, $($tt:tt)*) => {
         PathAndQuery::from_str(&__path!($expr, $($tt)*))
     };
