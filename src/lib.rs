@@ -56,7 +56,6 @@ macro_rules! impl_cache {
             if let Some(value) = self.cache.$name.read().await.clone() {
                 return Ok(value);
             }
-
             let mut lock = self.cache.$name.write().await;
             if let Some(value) = lock.clone() {
                 Ok(value)
