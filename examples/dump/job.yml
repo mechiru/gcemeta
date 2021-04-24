@@ -5,7 +5,10 @@ metadata:
 spec:
   template:
     spec:
+      restartPolicy: Never
       containers:
       - name: gcemeta-example
-        image: mechiru/gcemeta-example:v0.1.2
-      restartPolicy: OnFailure
+        image: mechiru/gcemeta-example:v0.2.0
+        env:
+        - name: RUST_LOG
+          value: debug
