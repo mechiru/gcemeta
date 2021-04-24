@@ -9,10 +9,11 @@ This library provides access to [GCE metadata service](https://developers.google
 # Example
 
 ```rust
-use gcemeta::*;
+use gcemeta::Client;
 
-println!("on_gce = {:?}", on_gce());
-println!("project_id = {:?}", project_id());
+let client = Client::new();
+println!("on gce = {:?}", client.on_gce().await?);
+println!("project id = {:?}", client.project_id().await?);
 ```
 
 ## License

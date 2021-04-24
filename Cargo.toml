@@ -18,10 +18,19 @@ include = [
   "src/**/*",
 ]
 
-[dependencies]
-lazy_static = "1.4"
-attohttpc = { version = "0.15", default-features = false, features = ["compress"] }
-serde_json = "1.0"
-
 [dev-dependencies]
-rouille = "3.0"
+tokio = { version = "1.5", features = ["rt-multi-thread"] }
+tracing-subscriber = { version = "0.2" }
+
+[dependencies]
+tracing = { version = "0.1", default-features = false, features = ["std"] }
+thiserror = { version = "1.0" }
+bytes = { version = "1.0" }
+serde = { version = "1.0" }
+serde_json = { version = "1.0" }
+tokio = { version = "1.5", features = ["macros", "time", "sync", "rt"] }
+hyper = { version = "0.14", features = ["client", "http1"] }
+
+[features]
+default = ["parking_lot", "hyper/tcp"]
+parking_lot = ["tokio/parking_lot"]
