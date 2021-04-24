@@ -53,19 +53,17 @@ macro_rules! impl_cache {
     ($(#[$attr:meta])* $name:ident, $path:expr, $trim:expr) => {
         $(#[$attr])*
         pub async fn $name(&self) -> crate::Result<String> {
-            let lock = self.cache.$name.read().await;
+            if let Some(value) = self.cache.$name.read().await.clone() {
+                return Ok(value);
+            }
+
+            let mut lock = self.cache.$name.write().await;
             if let Some(value) = lock.clone() {
                 Ok(value)
             } else {
-                drop(lock);
-                let mut lock = self.cache.$name.write().await;
-                if let Some(value) = lock.clone() {
-                    Ok(value)
-                } else {
-                    let value = self.get(path!($path), $trim).await?;
-                    *lock = Some(value.clone());
-                    Ok(value)
-                }
+                let value = self.get(path!($path), $trim).await?;
+                *lock = Some(value.clone());
+                Ok(value)
             }
         }
     };
