@@ -239,9 +239,7 @@ where
         use bytes::Buf as _;
 
         let (_, body) = self.get_parts(path_and_query).await?;
-        let body = aggregate(body).await?;
-        let body = serde_json::from_reader(body.reader())?;
-        Ok(body)
+        Ok(serde_json::from_reader(aggregate(body).await?.reader())?)
     }
 
     /// Report whether this process is running on Google Compute Engine.
@@ -324,35 +322,33 @@ where
 
     /// Get the instance's primary internal IP address.
     pub async fn internal_ip(&self) -> crate::Result<String> {
-        Ok(self.get(path!("instance/network-interfaces/0/ip"), true).await?)
+        self.get(path!("instance/network-interfaces/0/ip"), true).await
     }
 
     /// Get the instance's primary external (public) IP address.
     pub async fn external_ip(&self) -> crate::Result<String> {
-        let path = path!("instance/network-interfaces/0/access-configs/0/external-ip");
-        Ok(self.get(path, true).await?)
+        self.get(path!("instance/network-interfaces/0/access-configs/0/external-ip"), true).await
     }
 
     /// Get service account's email.
     pub async fn email(&self, sa: Option<&str>) -> crate::Result<String> {
-        let path = if let Some(sa) = sa {
-            path!("instance/service-accounts/{}/email", sa)?
-        } else {
-            path!("instance/service-accounts/default/email")
+        let path = match sa {
+            Some(sa) => path!("instance/service-accounts/{}/email", sa)?,
+            _ => path!("instance/service-accounts/default/email"),
         };
-        Ok(self.get(path, true).await?)
+        self.get(path, true).await
     }
 
     /// Get the instance's hostname.
     ///
     /// This will be of the form `<instance_id>.c.<project_id>.internal`.
     pub async fn hostname(&self) -> crate::Result<String> {
-        Ok(self.get(path!("instance/hostname"), true).await?)
+        self.get(path!("instance/hostname"), true).await
     }
 
     /// Get the list of user-defined instance tags, assigned when initially creating a GCE instance.
     pub async fn instance_tags(&self) -> crate::Result<Vec<String>> {
-        Ok(self.get_as(path!("instance/tags")).await?)
+        self.get_as(path!("instance/tags")).await
     }
 
     impl_cache!(
@@ -364,14 +360,14 @@ where
 
     /// Get the current VM's instance ID string.
     pub async fn instance_name(&self) -> crate::Result<String> {
-        Ok(self.get(path!("instance/name"), true).await?)
+        self.get(path!("instance/name"), true).await
     }
 
     /// Get the current VM's zone, such as `us-central1-b`.
     pub async fn zone(&self) -> crate::Result<String> {
         // zone is of the form "projects/<numeric_project_id>/zones/<zone_name>".
         let s = self.get(path!("instance/zone"), true).await?;
-        Ok(s.split('/').last().map(ToOwned::to_owned).unwrap_or_else(String::new))
+        Ok(s.split('/').last().unwrap_or("").to_owned())
     }
 
     /// Get the list of user-defined attributes, assigned when initially creating a GCE VM instance.
@@ -388,20 +384,19 @@ where
 
     /// Get the value of the provided VM instance attribute.
     pub async fn instance_attr(&self, attr: impl AsRef<str>) -> crate::Result<String> {
-        Ok(self.get(path!("instance/attributes/{}", attr.as_ref())?, false).await?)
+        self.get(path!("instance/attributes/{}", attr.as_ref())?, false).await
     }
 
     /// Get the value of the provided project attribute.
     pub async fn project_attr(&self, attr: impl AsRef<str>) -> crate::Result<String> {
-        Ok(self.get(path!("project/attributes/{}", attr.as_ref())?, false).await?)
+        self.get(path!("project/attributes/{}", attr.as_ref())?, false).await
     }
 
     /// Get the service account scopes for the given account.
     pub async fn scopes(&self, sa: Option<&str>) -> crate::Result<Vec<String>> {
-        let path = if let Some(sa) = sa {
-            path!("instance/service-accounts/{}/scopes", sa)?
-        } else {
-            path!("instance/service-accounts/default/scopes")
+        let path = match sa {
+            Some(sa) => path!("instance/service-accounts/{}/scopes", sa)?,
+            _ => path!("instance/service-accounts/default/scopes"),
         };
         let s = self.get(path, true).await?;
         Ok(s.lines().map(ToOwned::to_owned).collect())
