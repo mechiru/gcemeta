@@ -223,7 +223,10 @@ where
         }
         let mut s = String::from_utf8(vec)?;
         if trim {
-            s = s.trim().to_owned()
+            let trimed = s.trim();
+            if trimed.len() != s.len() {
+                s = trimed.to_owned();
+            }
         }
         Ok(s)
     }
