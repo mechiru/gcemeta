@@ -169,7 +169,6 @@ impl Client<(), Body> {
             connector.set_keepalive(Some(keepalive));
             hyper::Client::builder().pool_idle_timeout(keepalive).build(connector)
         };
-
         Client { inner, env: Env::init(), config: Default::default(), cache: Default::default() }
     }
 
@@ -178,7 +177,7 @@ impl Client<(), Body> {
     pub fn new_with<C, B>(client: hyper::Client<C, B>) -> Client<C, B> {
         Client {
             inner: client,
-            env: Default::default(),
+            env: Env::init(),
             config: Default::default(),
             cache: Default::default(),
         }
