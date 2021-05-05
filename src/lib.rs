@@ -25,7 +25,7 @@ use hyper::{
     Body, Request, StatusCode, Uri,
 };
 use tokio::sync::RwLock;
-use tracing::debug;
+use tracing::trace;
 
 use std::{env, error, fmt, str::FromStr, sync::Arc, time::Duration};
 
@@ -256,7 +256,7 @@ where
         }
 
         let present = self.env.metadata_host.is_some();
-        debug!("check environment variable: {}", present);
+        trace!("check environment variable: {}", present);
         if present {
             *on_gce = Some(true);
             return Ok(true);
@@ -281,7 +281,7 @@ where
                     resp.headers().get(&self.config.flavor_name) == Some(&self.config.flavor_value)
                 })
                 .unwrap_or(false);
-            debug!("access to medatada service: {}", on);
+            trace!("access to medatada service: {}", on);
             on
         };
 
@@ -291,7 +291,7 @@ where
                 .to_socket_addrs()
                 .map(|addrs| addrs.len() > 0)
                 .unwrap_or(false);
-            debug!("resolve hostname: {}", on);
+            trace!("resolve hostname: {}", on);
             on
         });
 
@@ -299,7 +299,7 @@ where
             true = meta => true,
             Ok(true) = name => true,
             _ = tokio::time::sleep(self.config.probe_timeout) => {
-                debug!("probe timeout exceeded");
+                trace!("probe timeout exceeded");
                 false
             },
         };
