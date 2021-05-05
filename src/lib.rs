@@ -73,19 +73,22 @@ macro_rules! impl_cache {
 /// Represents errors that can occur during handling metadata service.
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
+    // internal
     #[error("http client error: {0}")]
     Http(#[from] hyper::Error),
+    // user
     #[error("uri parse error: {0}")]
     Uri(#[from] hyper::http::uri::InvalidUri),
-    #[error("response body encoding error: {0}")]
-    Encoding(#[from] std::string::FromUtf8Error),
-    #[error("json deserialize error: {0}")]
-    Json(#[from] serde_json::Error),
+    // server
     #[error("response status code error: {0}")]
     StatusCode(StatusCode),
+    #[error("response body encoding error: {0}")]
+    Encoding(#[from] std::string::FromUtf8Error),
+    #[error("response body deserialize error: {0}")]
+    Json(#[from] serde_json::Error),
 }
 
-/// Wrapper for the `Result` type with an [`Error`](struct.Error.html).
+/// Wrapper for the `Result` type with an [`Error`](Error).
 pub type Result<T> = std::result::Result<T, Error>;
 
 // === env ===
