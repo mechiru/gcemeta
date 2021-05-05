@@ -1,9 +1,9 @@
 use gcemeta::Client;
 
 macro_rules! call {
-	  ($c:expr, $name:ident($($tt:tt)*)) => {
-		    println!(concat!(stringify!($name), " = {:?}"), $c.$name($($tt)*).await);
-	  };
+    ($c:expr, $name:ident($($tt:tt)*)) => {
+        println!(concat!(stringify!($name), " = {:?}"), $c.$name($($tt)*).await);
+    };
 }
 
 #[tokio::main]
