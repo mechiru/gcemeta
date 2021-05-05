@@ -160,6 +160,7 @@ pub struct Client<C, B = Body> {
     cache: Arc<Cache>,
 }
 
+#[allow(clippy::new_ret_no_self)]
 impl Client<(), Body> {
     /// Create a new Client with the default config.
     #[cfg(feature = "default")]
