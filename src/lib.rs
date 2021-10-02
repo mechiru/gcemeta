@@ -48,7 +48,7 @@ macro_rules! path {
     };
 }
 
-macro_rules! impl_cache {
+macro_rules! impl_cache_fn {
     ($(#[$attr:meta])* $name:ident, $path:expr, $trim:expr) => {
         $(#[$attr])*
         pub async fn $name(&self) -> crate::Result<String> {
@@ -308,14 +308,14 @@ where
         Ok(on)
     }
 
-    impl_cache!(
+    impl_cache_fn!(
         /// Get the current instance's project ID string.
         project_id,
         "project/project-id",
         true
     );
 
-    impl_cache!(
+    impl_cache_fn!(
         /// Get the current instance's numeric project ID.
         numeric_project_id,
         "project/numeric-project-id",
@@ -353,7 +353,7 @@ where
         self.get_as(path!("instance/tags")).await
     }
 
-    impl_cache!(
+    impl_cache_fn!(
         /// Get the current VM's numeric instance ID.
         instance_id,
         "instance/id",
