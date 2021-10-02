@@ -26,7 +26,7 @@ use hyper::{
 use tokio::sync::RwLock;
 use tracing::trace;
 
-use std::{env, error, fmt, str::FromStr, sync::Arc, time::Duration};
+use std::{env, error, fmt, future::Future, str::FromStr, sync::Arc, time::Duration};
 
 // === macros ===
 
@@ -194,7 +194,10 @@ where
     B::Data: Send,
     B::Error: Into<Box<dyn error::Error + Send + Sync>>,
 {
-    async fn get_parts(&self, path_and_query: PathAndQuery) -> crate::Result<(Parts, Body)> {
+    fn get_parts(
+        &self,
+        path_and_query: PathAndQuery,
+    ) -> impl Future<Output = crate::Result<(Parts, Body)>> + Send + 'static {
         let host = self.env.metadata_host.clone();
         let mut parts = host.unwrap_or_else(|| self.config.metadata_ip.clone()).into_parts();
         parts.scheme = Some(self.config.schema.clone());
@@ -206,42 +209,58 @@ where
             .header(USER_AGENT, &self.config.user_agent)
             .body(B::default())
             .unwrap();
-        let parts = self.inner.request(req).await?.into_parts();
-        match parts.0.status {
-            StatusCode::OK => Ok(parts),
-            _ => Err(Error::StatusCode(parts)),
-        }
-    }
-
-    /// Get value from the metadata service.
-    pub async fn get(&self, path_and_query: PathAndQuery, trim: bool) -> crate::Result<String> {
-        use bytes::BufMut as _;
-
-        let (_, mut body) = self.get_parts(path_and_query).await?;
-        let mut vec = Vec::new();
-        while let Some(next) = body.data().await {
-            let chunk = next?;
-            vec.put(chunk);
-        }
-        let mut s = String::from_utf8(vec)?;
-        if trim {
-            let trimed = s.trim();
-            if trimed.len() != s.len() {
-                s = trimed.to_owned();
+        let fut = self.inner.request(req);
+        async {
+            let parts = fut.await?.into_parts();
+            match parts.0.status {
+                StatusCode::OK => Ok(parts),
+                _ => Err(Error::StatusCode(parts)),
             }
         }
-        Ok(s)
     }
 
     /// Get value from the metadata service.
-    pub async fn get_as<T>(&self, path_and_query: PathAndQuery) -> crate::Result<T>
+    pub fn get(
+        &self,
+        path_and_query: PathAndQuery,
+        trim: bool,
+    ) -> impl Future<Output = crate::Result<String>> + Send + 'static {
+        use bytes::BufMut as _;
+
+        let fut = self.get_parts(path_and_query);
+        async move {
+            let (_, mut body) = fut.await?;
+            let mut vec = Vec::new();
+            while let Some(next) = body.data().await {
+                let chunk = next?;
+                vec.put(chunk);
+            }
+            let mut s = String::from_utf8(vec)?;
+            if trim {
+                let trimed = s.trim();
+                if trimed.len() != s.len() {
+                    s = trimed.to_owned();
+                }
+            }
+            Ok(s)
+        }
+    }
+
+    /// Get value from the metadata service.
+    pub fn get_as<T>(
+        &self,
+        path_and_query: PathAndQuery,
+    ) -> impl Future<Output = crate::Result<T>> + Send + 'static
     where
         T: serde::de::DeserializeOwned,
     {
         use bytes::Buf as _;
 
-        let (_, body) = self.get_parts(path_and_query).await?;
-        Ok(serde_json::from_reader(aggregate(body).await?.reader())?)
+        let fut = self.get_parts(path_and_query);
+        async {
+            let (_, body) = fut.await?;
+            Ok(serde_json::from_reader(aggregate(body).await?.reader())?)
+        }
     }
 
     /// Report whether this process is running on Google Compute Engine.
