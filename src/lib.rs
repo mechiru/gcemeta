@@ -14,7 +14,6 @@
 //! [`metadata`]: https://developers.google.com/compute/docs/metadata
 
 use hyper::{
-    self,
     body::{aggregate, HttpBody},
     client::connect::Connect,
     header::{HeaderName, HeaderValue, USER_AGENT},
@@ -80,8 +79,8 @@ pub enum Error {
     #[error("uri parse error: {0}")]
     Uri(#[from] hyper::http::uri::InvalidUri),
     // server
-    #[error("response status code error: {0}")]
-    StatusCode(StatusCode),
+    #[error("response status code error: {0:?}")]
+    StatusCode((Parts, Body)),
     #[error("response body encoding error: {0}")]
     Encoding(#[from] std::string::FromUtf8Error),
     #[error("response body deserialize error: {0}")]
@@ -207,10 +206,10 @@ where
             .header(USER_AGENT, &self.config.user_agent)
             .body(B::default())
             .unwrap();
-        let resp = self.inner.request(req).await?;
-        match resp.status() {
-            StatusCode::OK => Ok(resp.into_parts()),
-            code => Err(Error::StatusCode(code)),
+        let parts = self.inner.request(req).await?.into_parts();
+        match parts.0.status {
+            StatusCode::OK => Ok(parts),
+            _ => Err(Error::StatusCode(parts)),
         }
     }
 
