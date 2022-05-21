@@ -360,6 +360,15 @@ where
         self.get(path, true).await
     }
 
+    /// Get service account's token.
+    pub async fn token(&self, sa: Option<&str>) -> crate::Result<String> {
+        let path = match sa {
+            Some(sa) => path!("instance/service-accounts/{}/token", sa)?,
+            _ => path!("instance/service-accounts/default/token"),
+        };
+        self.get(path, true).await
+    }
+
     /// Get the instance's hostname.
     ///
     /// This will be of the form `<instance_id>.c.<project_id>.internal`.
