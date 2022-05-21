@@ -1,6 +1,7 @@
 # gcemeta
 
 [![ci](https://github.com/mechiru/gcemeta/workflows/ci/badge.svg)](https://github.com/mechiru/gcemeta/actions?query=workflow:ci)
+[![pub](https://github.com/mechiru/gcemeta/workflows/pub/badge.svg)](https://github.com/mechiru/gcemeta/actions?query=workflow:pub)
 [![Rust Documentation](https://docs.rs/gcemeta/badge.svg)](https://docs.rs/gcemeta)
 [![Latest Version](https://img.shields.io/crates/v/gcemeta.svg)](https://crates.io/crates/gcemeta)
 
