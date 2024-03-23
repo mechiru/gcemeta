@@ -14,14 +14,13 @@
 //! [`metadata`]: https://developers.google.com/compute/docs/metadata
 
 use hyper::{
-    body::{aggregate, HttpBody},
-    client::connect::Connect,
+    body::Incoming,
     header::{HeaderName, HeaderValue, USER_AGENT},
     http::{
         response::Parts,
         uri::{PathAndQuery, Scheme},
     },
-    Body, Request, StatusCode, Uri,
+    Request, StatusCode, Uri,
 };
 use tokio::sync::RwLock;
 use tracing::trace;
@@ -74,13 +73,13 @@ macro_rules! impl_cache_fn {
 pub enum Error {
     // internal
     #[error("http client error: {0}")]
-    Http(#[from] hyper::Error),
+    Http(Box<dyn std::error::Error + Send + Sync>),
     // user
     #[error("uri parse error: {0}")]
     Uri(#[from] hyper::http::uri::InvalidUri),
     // server
     #[error("response status code error: {0:?}")]
-    StatusCode((Parts, Body)),
+    StatusCode((Parts, Incoming)),
     #[error("response body encoding error: {0}")]
     Encoding(#[from] std::string::FromUtf8Error),
     #[error("response body deserialize error: {0}")]
@@ -151,28 +150,40 @@ struct Cache {
 
 // === client ===
 
+// I want to use `type DefaultBody = Incoming;`, but I can't.
+// If I use it, I can't call the methods defined in `impl<C, B> Client<C, B>`.
+// Because `impl<C, B> Client<C, B>` requires `B: Default`.
+type DefaultBody = String;
+
 /// A Client to access metadata service.
-pub struct Client<C, B = Body> {
-    inner: hyper::Client<C, B>,
+pub struct Client<C, B = DefaultBody> {
+    inner: hyper_util::client::legacy::Client<C, B>,
     env: Env,
     config: Config,
     cache: Arc<Cache>,
 }
 
 #[allow(clippy::new_ret_no_self)]
-impl Client<(), Body> {
+impl Client<(), DefaultBody> {
     /// Create a new Client with the default config.
     #[cfg(feature = "default")]
-    pub fn new() -> Client<hyper::client::connect::HttpConnector, Body> {
+    pub fn new() -> Client<hyper_util::client::legacy::connect::HttpConnector, DefaultBody> {
         // https://github.com/googleapis/google-cloud-go/blob/c66290a95b8bf2298d5e7c84378cb6118cc0a348/compute/metadata/metadata.go#L64-L71
         let inner = {
             let keepalive = Duration::from_secs(30);
-            let mut connector = hyper::client::HttpConnector::new();
+            let mut connector = hyper_util::client::legacy::connect::HttpConnector::new();
             connector.set_connect_timeout(Some(Duration::from_secs(2)));
             connector.set_keepalive(Some(keepalive));
-            hyper::Client::builder().pool_idle_timeout(keepalive).build(connector)
+            hyper_util::client::legacy::Client::builder(hyper_util::rt::TokioExecutor::new())
+                .pool_idle_timeout(keepalive)
+                .build(connector)
         };
-        Client { inner, env: Env::init(), config: Default::default(), cache: Default::default() }
+        Client {
+            inner,
+            env: Env::init(),
+            config: Default::default(),
+            cache: Default::default(),
+        }
     }
 
     /// Create a new client using the passed http client.
@@ -189,17 +200,19 @@ impl Client<(), Body> {
 
 impl<C, B> Client<C, B>
 where
-    C: Connect + Clone + Send + Sync + 'static,
-    B: HttpBody + Default + Send + 'static,
+    C: hyper_util::client::legacy::connect::Connect + Clone + Send + Sync + 'static,
+    B: hyper::body::Body + Default + Send + Unpin + 'static,
     B::Data: Send,
     B::Error: Into<Box<dyn error::Error + Send + Sync>>,
 {
     fn get_parts(
         &self,
         path_and_query: PathAndQuery,
-    ) -> impl Future<Output = crate::Result<(Parts, Body)>> + Send + 'static {
+    ) -> impl Future<Output = crate::Result<(Parts, Incoming)>> + Send + 'static {
         let host = self.env.metadata_host.clone();
-        let mut parts = host.unwrap_or_else(|| self.config.metadata_ip.clone()).into_parts();
+        let mut parts = host
+            .unwrap_or_else(|| self.config.metadata_ip.clone())
+            .into_parts();
         parts.scheme = Some(self.config.schema.clone());
         parts.path_and_query = Some(path_and_query);
         let uri = Uri::from_parts(parts).unwrap();
@@ -211,7 +224,10 @@ where
             .unwrap();
         let fut = self.inner.request(req);
         async {
-            let parts = fut.await?.into_parts();
+            let parts = fut
+                .await
+                .map_err(|e| crate::Error::Http(Box::new(e)))?
+                .into_parts();
             match parts.0.status {
                 StatusCode::OK => Ok(parts),
                 _ => Err(Error::StatusCode(parts)),
@@ -225,16 +241,14 @@ where
         path_and_query: PathAndQuery,
         trim: bool,
     ) -> impl Future<Output = crate::Result<String>> + Send + 'static {
-        use bytes::BufMut as _;
-
         let fut = self.get_parts(path_and_query);
         async move {
-            let (_, mut body) = fut.await?;
-            let mut vec = Vec::new();
-            while let Some(next) = body.data().await {
-                let chunk = next?;
-                vec.put(chunk);
-            }
+            let (_, body) = fut.await?;
+            let vec = http_body_util::BodyExt::collect(body)
+                .await
+                .map_err(|e| crate::Error::Http(Box::new(e)))?
+                .to_bytes()
+                .to_vec();
             let mut s = String::from_utf8(vec)?;
             if trim {
                 let trimed = s.trim();
@@ -259,7 +273,13 @@ where
         let fut = self.get_parts(path_and_query);
         async {
             let (_, body) = fut.await?;
-            Ok(serde_json::from_reader(aggregate(body).await?.reader())?)
+            Ok(serde_json::from_reader(
+                http_body_util::BodyExt::collect(body)
+                    .await
+                    .map_err(|e| crate::Error::Http(Box::new(e)))?
+                    .aggregate()
+                    .reader(),
+            )?)
         }
     }
 
@@ -343,12 +363,17 @@ where
 
     /// Get the instance's primary internal IP address.
     pub async fn internal_ip(&self) -> crate::Result<String> {
-        self.get(path!("instance/network-interfaces/0/ip"), true).await
+        self.get(path!("instance/network-interfaces/0/ip"), true)
+            .await
     }
 
     /// Get the instance's primary external (public) IP address.
     pub async fn external_ip(&self) -> crate::Result<String> {
-        self.get(path!("instance/network-interfaces/0/access-configs/0/external-ip"), true).await
+        self.get(
+            path!("instance/network-interfaces/0/access-configs/0/external-ip"),
+            true,
+        )
+        .await
     }
 
     /// Get service account's email.
@@ -405,12 +430,14 @@ where
 
     /// Get the value of the provided VM instance attribute.
     pub async fn instance_attr(&self, attr: impl AsRef<str>) -> crate::Result<String> {
-        self.get(path!("instance/attributes/{}", attr.as_ref())?, false).await
+        self.get(path!("instance/attributes/{}", attr.as_ref())?, false)
+            .await
     }
 
     /// Get the value of the provided project attribute.
     pub async fn project_attr(&self, attr: impl AsRef<str>) -> crate::Result<String> {
-        self.get(path!("project/attributes/{}", attr.as_ref())?, false).await
+        self.get(path!("project/attributes/{}", attr.as_ref())?, false)
+            .await
     }
 
     /// Get the service account scopes for the given account.
