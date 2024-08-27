@@ -13,20 +13,21 @@
 //!
 //! [`metadata`]: https://developers.google.com/compute/docs/metadata
 
+use std::{env, fmt, future::Future, str::FromStr, sync::Arc, time::Duration};
+
+use http_body_util::{BodyExt as _, Empty};
 use hyper::{
-    body::{aggregate, HttpBody},
-    client::connect::Connect,
+    body::Incoming,
     header::{HeaderName, HeaderValue, USER_AGENT},
     http::{
         response::Parts,
         uri::{PathAndQuery, Scheme},
     },
-    Body, Request, StatusCode, Uri,
+    Request, StatusCode, Uri,
 };
+use hyper_util::client::legacy::connect::HttpConnector;
 use tokio::sync::RwLock;
 use tracing::trace;
-
-use std::{env, error, fmt, future::Future, str::FromStr, sync::Arc, time::Duration};
 
 // === macros ===
 
@@ -74,13 +75,15 @@ macro_rules! impl_cache_fn {
 pub enum Error {
     // internal
     #[error("http client error: {0}")]
-    Http(#[from] hyper::Error),
+    Http(#[from] hyper_util::client::legacy::Error),
     // user
     #[error("uri parse error: {0}")]
     Uri(#[from] hyper::http::uri::InvalidUri),
     // server
+    #[error("response collection error: {0}")]
+    Response(#[from] hyper::Error),
     #[error("response status code error: {0:?}")]
-    StatusCode((Parts, Body)),
+    StatusCode((Parts, Incoming)),
     #[error("response body encoding error: {0}")]
     Encoding(#[from] std::string::FromUtf8Error),
     #[error("response body deserialize error: {0}")]
@@ -127,9 +130,9 @@ impl Default for Config {
             // https://github.com/googleapis/google-cloud-go/blob/c66290a95b8bf2298d5e7c84378cb6118cc0a348/compute/metadata/metadata.go#L39
             metadata_ip: Uri::from_static("169.254.169.254"),
             user_agent: HeaderValue::from_static(concat!(
-                "github.com/mechiru/",
+                "rust-",
                 env!("CARGO_PKG_NAME"),
-                " v",
+                "/",
                 env!("CARGO_PKG_VERSION")
             )),
             flavor_name: HeaderName::from_static("metadata-flavor"),
@@ -152,52 +155,34 @@ struct Cache {
 // === client ===
 
 /// A Client to access metadata service.
-pub struct Client<C, B = Body> {
-    inner: hyper::Client<C, B>,
+#[derive(Clone)]
+pub struct Client {
+    inner: hyper_util::client::legacy::Client<HttpConnector, Empty<bytes::Bytes>>,
     env: Env,
     config: Config,
     cache: Arc<Cache>,
 }
 
-#[allow(clippy::new_ret_no_self)]
-impl Client<(), Body> {
+impl Client {
     /// Create a new Client with the default config.
-    #[cfg(feature = "default")]
-    pub fn new() -> Client<hyper::client::connect::HttpConnector, Body> {
+    pub fn new() -> Self {
         // https://github.com/googleapis/google-cloud-go/blob/c66290a95b8bf2298d5e7c84378cb6118cc0a348/compute/metadata/metadata.go#L64-L71
         let inner = {
             let keepalive = Duration::from_secs(30);
-            let mut connector = hyper::client::HttpConnector::new();
+            let mut connector = HttpConnector::new();
             connector.set_connect_timeout(Some(Duration::from_secs(2)));
             connector.set_keepalive(Some(keepalive));
-            hyper::Client::builder().pool_idle_timeout(keepalive).build(connector)
+            hyper_util::client::legacy::Builder::new(hyper_util::rt::TokioExecutor::new())
+                .pool_idle_timeout(keepalive)
+                .build(connector)
         };
         Client { inner, env: Env::init(), config: Default::default(), cache: Default::default() }
     }
 
-    /// Create a new client using the passed http client.
-    #[cfg(not(feature = "default"))]
-    pub fn new_with<C, B>(client: hyper::Client<C, B>) -> Client<C, B> {
-        Client {
-            inner: client,
-            env: Env::init(),
-            config: Default::default(),
-            cache: Default::default(),
-        }
-    }
-}
-
-impl<C, B> Client<C, B>
-where
-    C: Connect + Clone + Send + Sync + 'static,
-    B: HttpBody + Default + Send + 'static,
-    B::Data: Send,
-    B::Error: Into<Box<dyn error::Error + Send + Sync>>,
-{
     fn get_parts(
         &self,
         path_and_query: PathAndQuery,
-    ) -> impl Future<Output = crate::Result<(Parts, Body)>> + Send + 'static {
+    ) -> impl Future<Output = crate::Result<(Parts, Incoming)>> + Send + 'static {
         let host = self.env.metadata_host.clone();
         let mut parts = host.unwrap_or_else(|| self.config.metadata_ip.clone()).into_parts();
         parts.scheme = Some(self.config.schema.clone());
@@ -205,9 +190,10 @@ where
         let uri = Uri::from_parts(parts).unwrap();
 
         let req = Request::get(uri)
-            .header(&self.config.flavor_name, &self.config.flavor_value)
+            // https://github.com/googleapis/google-cloud-go/blob/c66290a95b8bf2298d5e7c84378cb6118cc0a348/compute/metadata/metadata.go#L305-L306
             .header(USER_AGENT, &self.config.user_agent)
-            .body(B::default())
+            .header(&self.config.flavor_name, &self.config.flavor_value)
+            .body(Empty::<bytes::Bytes>::new())
             .unwrap();
         let fut = self.inner.request(req);
         async {
@@ -225,17 +211,10 @@ where
         path_and_query: PathAndQuery,
         trim: bool,
     ) -> impl Future<Output = crate::Result<String>> + Send + 'static {
-        use bytes::BufMut as _;
-
         let fut = self.get_parts(path_and_query);
         async move {
-            let (_, mut body) = fut.await?;
-            let mut vec = Vec::new();
-            while let Some(next) = body.data().await {
-                let chunk = next?;
-                vec.put(chunk);
-            }
-            let mut s = String::from_utf8(vec)?;
+            let (_, body) = fut.await?;
+            let mut s = String::from_utf8(body.collect().await?.to_bytes().into())?;
             if trim {
                 let trimed = s.trim();
                 if trimed.len() != s.len() {
@@ -247,10 +226,7 @@ where
     }
 
     /// Get value from the metadata service.
-    pub fn get_as<T>(
-        &self,
-        path_and_query: PathAndQuery,
-    ) -> impl Future<Output = crate::Result<T>> + Send + 'static
+    pub fn get_as<T>(&self, path_and_query: PathAndQuery) -> impl Future<Output = crate::Result<T>> + Send + 'static
     where
         T: serde::de::DeserializeOwned,
     {
@@ -259,7 +235,7 @@ where
         let fut = self.get_parts(path_and_query);
         async {
             let (_, body) = fut.await?;
-            Ok(serde_json::from_reader(aggregate(body).await?.reader())?)
+            Ok(serde_json::from_reader(body.collect().await?.to_bytes().reader())?)
         }
     }
 
@@ -287,18 +263,16 @@ where
             parts.path_and_query = Some(PathAndQuery::from_static("/"));
 
             let req = Request::get(Uri::from_parts(parts).unwrap())
-                .header(&self.config.flavor_name, &self.config.flavor_value)
                 .header(USER_AGENT, &self.config.user_agent)
-                .body(B::default())
+                .header(&self.config.flavor_name, &self.config.flavor_value)
+                .body(Empty::<bytes::Bytes>::new())
                 .unwrap();
 
             let on = self
                 .inner
                 .request(req)
                 .await
-                .map(|resp| {
-                    resp.headers().get(&self.config.flavor_name) == Some(&self.config.flavor_value)
-                })
+                .map(|resp| resp.headers().get(&self.config.flavor_name) == Some(&self.config.flavor_value))
                 .unwrap_or(false);
             trace!("access to medatada service: {}", on);
             on
@@ -306,10 +280,7 @@ where
 
         let name = tokio::task::spawn_blocking(|| {
             use std::net::ToSocketAddrs as _;
-            let on = ("metadata.google.internal", 0)
-                .to_socket_addrs()
-                .map(|addrs| addrs.len() > 0)
-                .unwrap_or(false);
+            let on = ("metadata.google.internal", 0).to_socket_addrs().map(|addrs| addrs.len() > 0).unwrap_or(false);
             trace!("resolve hostname: {}", on);
             on
         });
@@ -426,18 +397,7 @@ where
     // TODO: subscribe
 }
 
-impl<C: Clone, B> Clone for Client<C, B> {
-    fn clone(&self) -> Self {
-        Self {
-            inner: self.inner.clone(),
-            env: self.env.clone(),
-            config: self.config.clone(),
-            cache: self.cache.clone(),
-        }
-    }
-}
-
-impl<C, B> fmt::Debug for Client<C, B> {
+impl fmt::Debug for Client {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Client").finish()
     }

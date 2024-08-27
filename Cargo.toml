@@ -19,18 +19,20 @@ include = [
 ]
 
 [dev-dependencies]
-tokio = { version = "1.18", features = ["rt-multi-thread"] }
+tokio = { version = "1.39", features = ["rt-multi-thread"] }
 tracing-subscriber = "0.3"
 
 [dependencies]
 tracing = { version = "0.1", default-features = false, features = ["std"] }
 thiserror = "1.0"
-bytes = "1.1"
+bytes = "1.7"
 serde = "1.0"
 serde_json = "1.0"
-tokio = { version = "1.18", features = ["macros", "time", "sync", "rt"] }
-hyper = { version = "0.14", features = ["client", "http1"] }
+tokio = { version = "1.39", features = ["macros", "time", "sync", "rt"] }
+hyper = { version = "1.4", features = ["client", "http1"] }
+hyper-util = { version = "0.1.7", features = ["http1", "client-legacy"] }
+http-body-util = "0.1.2"
 
 [features]
-default = ["parking_lot", "hyper/tcp"]
+default = ["parking_lot"]
 parking_lot = ["tokio/parking_lot"]
