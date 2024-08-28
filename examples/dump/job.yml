@@ -7,8 +7,8 @@ spec:
     spec:
       restartPolicy: Never
       containers:
-      - name: gcemeta-example
-        image: mechiru/gcemeta-example:v0.2.1
-        env:
-        - name: RUST_LOG
-          value: debug
+        - name: gcemeta-example
+          image: mechiru/gcemeta-example:v0.3.0
+          env:
+            - name: RUST_LOG
+              value: debug
