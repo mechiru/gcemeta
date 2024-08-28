@@ -165,6 +165,7 @@ pub struct Client {
 
 impl Client {
     /// Create a new Client with the default config.
+    #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         // https://github.com/googleapis/google-cloud-go/blob/c66290a95b8bf2298d5e7c84378cb6118cc0a348/compute/metadata/metadata.go#L64-L71
         let inner = {
