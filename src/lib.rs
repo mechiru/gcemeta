@@ -125,16 +125,12 @@ struct Config {
 
 impl Default for Config {
     fn default() -> Self {
+        let user_agent = concat!("rust-", env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"));
         Self {
             schema: Scheme::HTTP,
             // https://github.com/googleapis/google-cloud-go/blob/c66290a95b8bf2298d5e7c84378cb6118cc0a348/compute/metadata/metadata.go#L39
             metadata_ip: Uri::from_static("169.254.169.254"),
-            user_agent: HeaderValue::from_static(concat!(
-                "rust-",
-                env!("CARGO_PKG_NAME"),
-                "/",
-                env!("CARGO_PKG_VERSION")
-            )),
+            user_agent: HeaderValue::from_static(user_agent),
             flavor_name: HeaderName::from_static("metadata-flavor"),
             flavor_value: HeaderValue::from_static("Google"),
             probe_timeout: Duration::from_secs(5),
